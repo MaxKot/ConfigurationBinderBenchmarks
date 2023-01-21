@@ -8,11 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Remove="Microsoft.Extensions.Configuration.Binder\ConfigurationBinder.cs" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <None Include="Microsoft.Extensions.Configuration.Binder\ConfigurationBinder.cs" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="7.0.2" />
   </ItemGroup>
 
 </Project>
