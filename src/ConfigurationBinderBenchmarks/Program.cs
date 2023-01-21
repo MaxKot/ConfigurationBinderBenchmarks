@@ -1,10 +1,12 @@
-﻿namespace ConfigurationBinderBenchmarks
+﻿using BenchmarkDotNet.Running;
+
+namespace ConfigurationBinderBenchmarks
 {
-    internal class Program
+    public static class Program
     {
-        static void Main(string[] args)
+        public static void Main()
         {
-            Console.WriteLine("Hello, World!");
+            BenchmarkRunner.Run<BindingImplementations>();
         }
     }
 }
