@@ -3,6 +3,7 @@
 
 using Microsoft.Extensions.Configuration;
 using System.Collections;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 
@@ -56,33 +57,41 @@ namespace ConfigurationBinderBenchmarks
                 return null;
             }
 
-            Type genericType = typeof(Dictionary<,>).MakeGenericType(keyType, valueType);
-            MethodInfo addMethod = genericType.GetMethod("Add", DeclaredOnlyLookup)!;
-
-            Type kvpType = typeof(KeyValuePair<,>).MakeGenericType(keyType, valueType);
-            PropertyInfo keyMethod = kvpType.GetProperty("Key", DeclaredOnlyLookup)!;
-            PropertyInfo valueMethod = kvpType.GetProperty("Value", DeclaredOnlyLookup)!;
-
-            object dictionary = Activator.CreateInstance(genericType)!;
-
-            var orig = source as IEnumerable;
-            object?[] arguments = new object?[2];
-
-            if (orig != null)
+            // addMethod can only be null if dictionaryType is IReadOnlyDictionary<TKey, TValue> rather than IDictionary<TKey, TValue>.
+            MethodInfo? addMethod = dictionaryType.GetMethod("Add", DeclaredOnlyLookup);
+            if (addMethod is null || source is null)
             {
-                foreach (object? item in orig)
+                dictionaryType = typeof(Dictionary<,>).MakeGenericType(keyType, valueType);
+                var dictionary = Activator.CreateInstance(dictionaryType);
+                addMethod = dictionaryType.GetMethod("Add", DeclaredOnlyLookup);
+
+                var orig = source as IEnumerable;
+                if (orig is not null)
                 {
-                    object? k = keyMethod.GetMethod!.Invoke(item, null);
-                    object? v = valueMethod.GetMethod!.Invoke(item, null);
-                    arguments[0] = k;
-                    arguments[1] = v;
-                    addMethod.Invoke(dictionary, arguments);
+                    Type kvpType = typeof(KeyValuePair<,>).MakeGenericType(keyType, valueType);
+                    PropertyInfo keyMethod = kvpType.GetProperty("Key", DeclaredOnlyLookup)!;
+                    PropertyInfo valueMethod = kvpType.GetProperty("Value", DeclaredOnlyLookup)!;
+                    object?[] arguments = new object?[2];
+
+                    foreach (object? item in orig)
+                    {
+                        object? k = keyMethod.GetMethod!.Invoke(item, null);
+                        object? v = valueMethod.GetMethod!.Invoke(item, null);
+                        arguments[0] = k;
+                        arguments[1] = v;
+                        addMethod!.Invoke(dictionary, arguments);
+                    }
                 }
+
+                source = dictionary;
             }
 
-            BindDictionary(dictionary, genericType, config, options);
+            Debug.Assert(source is not null);
+            Debug.Assert(addMethod is not null);
 
-            return dictionary;
+            BindDictionary(source, dictionaryType, config, options);
+
+            return source;
         }
 
         [RequiresDynamicCode(DynamicCodeWarningMessage)]
