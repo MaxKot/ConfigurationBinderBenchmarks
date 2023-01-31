@@ -11,6 +11,9 @@ namespace ConfigurationBinderBenchmarks
 
         private const int Iterations = 100;
 
+        [Params(typeof(IReadOnlyDictionary<string, int>), typeof (IDictionary<string, int>))]
+        public Type DictionaryType = null!;
+
         [GlobalSetup]
         public void GlobalSetup()
         {
@@ -35,7 +38,7 @@ namespace ConfigurationBinderBenchmarks
             for (var i = 0; i < Iterations; ++i)
             {
                 result[i] = ConfigurationBinder.BindDictionaryInterface
-                    (_source, typeof(IDictionary<string, int>), null!, null!);
+                    (_source, DictionaryType, null!, null!);
             }
 
             return result;
@@ -48,7 +51,7 @@ namespace ConfigurationBinderBenchmarks
             for (var i = 0; i < Iterations; ++i)
             {
                 result[i] = ConfigurationBinder.BindDictionaryInterface_LazyReflection
-                    (_source, typeof(IDictionary<string, int>), null!, null!);
+                    (_source, DictionaryType, null!, null!);
             }
 
             return result;
@@ -61,20 +64,7 @@ namespace ConfigurationBinderBenchmarks
             for (var i = 0; i < Iterations; ++i)
             {
                 result[i] = ConfigurationBinder.BindDictionaryInterface_AddKvp
-                    (_source, typeof(IDictionary<string, int>), null!, null!);
-            }
-
-            return result;
-        }
-
-        [Benchmark]
-        public object? Ctor()
-        {
-            var result = new object?[Iterations];
-            for (var i = 0; i < Iterations; ++i)
-            {
-                result[i] = ConfigurationBinder.BindDictionaryInterface_Ctor
-                    (_source, typeof(IDictionary<string, int>), null!, null!);
+                    (_source, DictionaryType, null!, null!);
             }
 
             return result;
@@ -87,7 +77,7 @@ namespace ConfigurationBinderBenchmarks
             for (var i = 0; i < Iterations; ++i)
             {
                 result[i] = ConfigurationBinder.BindDictionaryInterface_MakeMethod
-                    (_source, typeof(IDictionary<string, int>), null!, null!);
+                    (_source, DictionaryType, null!, null!);
             }
 
             return result;
@@ -100,7 +90,7 @@ namespace ConfigurationBinderBenchmarks
             for (var i = 0; i < Iterations; ++i)
             {
                 result[i] = ConfigurationBinder.BindDictionaryInterface_Factory
-                    (_source, typeof(IDictionary<string, int>), null!, null!);
+                    (_source, DictionaryType, null!, null!);
             }
 
             return result;
