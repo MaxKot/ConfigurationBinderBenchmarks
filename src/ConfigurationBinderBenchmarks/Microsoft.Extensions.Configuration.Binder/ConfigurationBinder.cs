@@ -44,6 +44,7 @@ namespace ConfigurationBinderBenchmarks
     {
         private const BindingFlags DeclaredOnlyLookup = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
         private const string DynamicCodeWarningMessage = "Binding strongly typed objects to configuration values requires generating dynamic code at runtime, for example instantiating generic types.";
+        private const string TrimmingWarningMessage = "In case the type is non-primitive, the trimmer cannot statically analyze the object's type so its members may be trimmed.";
 
         [RequiresDynamicCode(DynamicCodeWarningMessage)]
         [RequiresUnreferencedCode("Cannot statically analyze what the element type is of the value objects in the dictionary so its members may be trimmed.")]
@@ -388,6 +389,92 @@ namespace ConfigurationBinderBenchmarks
             [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.NonPublicProperties)]
             Type dictionaryType,
             IConfiguration config, BinderOptions options)
+        {
+
+        }
+
+        // Binds and potentially overwrites a dictionary object.
+        // This differs from BindDictionaryInterface because this method doesn't clone
+        // the dictionary; it sets and/or overwrites values directly.
+        // When a user specifies a concrete dictionary or a concrete class implementing IDictionary<,>
+        // in their config class, then that value is used as-is. When a user specifies an interface (instantiated)
+        // in their config class, then it is cloned to a new dictionary, the same way as other collections.
+        [RequiresDynamicCode(DynamicCodeWarningMessage)]
+        [RequiresUnreferencedCode("Cannot statically analyze what the element type is of the value objects in the dictionary so its members may be trimmed.")]
+        private static void BindDictionary(
+            object dictionary,
+            [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.NonPublicProperties)]
+            Type dictionaryType,
+            IConfiguration config, BinderOptions options)
+        {
+            Debug.Assert(dictionaryType.IsGenericType &&
+                         (dictionaryType.GetGenericTypeDefinition() == typeof(IDictionary<,>) || dictionaryType.GetGenericTypeDefinition() == typeof(Dictionary<,>)));
+
+            Type keyType = dictionaryType.GenericTypeArguments[0];
+            Type valueType = dictionaryType.GenericTypeArguments[1];
+            bool keyTypeIsEnum = keyType.IsEnum;
+            bool keyTypeIsInteger =
+                keyType == typeof(sbyte) ||
+                keyType == typeof(byte) ||
+                keyType == typeof(short) ||
+                keyType == typeof(ushort) ||
+                keyType == typeof(int) ||
+                keyType == typeof(uint) ||
+                keyType == typeof(long) ||
+                keyType == typeof(ulong);
+
+            if (keyType != typeof(string) && !keyTypeIsEnum && !keyTypeIsInteger)
+            {
+                // We only support string, enum and integer (except nint-IntPtr and nuint-UIntPtr) keys
+                return;
+            }
+
+            MethodInfo tryGetValue = dictionaryType.GetMethod("TryGetValue", DeclaredOnlyLookup)!;
+            PropertyInfo indexerProperty = dictionaryType.GetProperty("Item", DeclaredOnlyLookup)!;
+
+            foreach (IConfigurationSection child in config.GetChildren())
+            {
+                try
+                {
+                    object key = keyTypeIsEnum ? Enum.Parse(keyType, child.Key, true) :
+                        keyTypeIsInteger ? Convert.ChangeType(child.Key, keyType) :
+                        child.Key;
+
+                    var valueBindingPoint = new BindingPoint(
+                        initialValueProvider: () =>
+                        {
+                            object?[] tryGetValueArgs = { key, null };
+                            return (bool)tryGetValue.Invoke(dictionary, tryGetValueArgs)! ? tryGetValueArgs[1] : null;
+                        },
+                        isReadOnly: false);
+                    BindInstance(
+                        type: valueType,
+                        bindingPoint: valueBindingPoint,
+                        config: child,
+                        options: options);
+                    if (valueBindingPoint.HasNewValue)
+                    {
+                        indexerProperty.SetValue(dictionary, valueBindingPoint.Value, new object[] { key });
+                    }
+                }
+                catch(Exception ex)
+                {
+                    if (options.ErrorOnUnknownConfiguration)
+                    {
+                        throw new InvalidOperationException(SR.Format(SR.Error_GeneralErrorWhenBinding,
+                            nameof(options.ErrorOnUnknownConfiguration)), ex);
+                    }
+                }
+            }
+        }
+
+        [RequiresDynamicCode(DynamicCodeWarningMessage)]
+        [RequiresUnreferencedCode(TrimmingWarningMessage)]
+        private static void BindInstance(
+            [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] Type type,
+            BindingPoint bindingPoint,
+            IConfiguration config,
+            BinderOptions options)
         {
 
         }
