@@ -12,6 +12,9 @@ namespace ConfigurationBinderBenchmarks
         [Params(0, 1, 2, 3, 5, 10, 100)]
         public int Added;
 
+        [Params(true, false)]
+        public bool AccessExistingValue;
+
         private const int Iterations = 100;
 
         private Dictionary<string, int>[] _sources = null!;
@@ -57,8 +60,9 @@ namespace ConfigurationBinderBenchmarks
             for (var i = 0; i < Iterations; ++i)
             {
                 var source = _sources[i];
-                ConfigurationBinder.BindDictionary
-                    (source, typeof (Dictionary<string, int>), _configuration, _options);
+                ConfigurationBinder.BindDictionary(
+                    source, typeof (Dictionary<string, int>), _configuration, _options,
+                    AccessExistingValue);
                 result[i] = source;
             }
 

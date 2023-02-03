@@ -405,7 +405,8 @@ namespace ConfigurationBinderBenchmarks
             object dictionary,
             [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.NonPublicProperties)]
             Type dictionaryType,
-            IConfiguration config, BinderOptions options)
+            IConfiguration config, BinderOptions options,
+            bool accessExistingValue)
         {
             Debug.Assert(dictionaryType.IsGenericType &&
                          (dictionaryType.GetGenericTypeDefinition() == typeof(IDictionary<,>) || dictionaryType.GetGenericTypeDefinition() == typeof(Dictionary<,>)));
@@ -451,7 +452,8 @@ namespace ConfigurationBinderBenchmarks
                         type: valueType,
                         bindingPoint: valueBindingPoint,
                         config: child,
-                        options: options);
+                        options: options,
+                        accessExistingValue: accessExistingValue);
                     if (valueBindingPoint.HasNewValue)
                     {
                         indexerProperty.SetValue(dictionary, valueBindingPoint.Value, new object[] { key });
@@ -474,9 +476,14 @@ namespace ConfigurationBinderBenchmarks
             [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] Type type,
             BindingPoint bindingPoint,
             IConfiguration config,
-            BinderOptions options)
+            BinderOptions options,
+            bool accessExistingValue)
         {
-
+            if (accessExistingValue)
+            {
+                GC.KeepAlive(bindingPoint.Value);
+            }
+            bindingPoint.SetValue(1);
         }
     }
 }
