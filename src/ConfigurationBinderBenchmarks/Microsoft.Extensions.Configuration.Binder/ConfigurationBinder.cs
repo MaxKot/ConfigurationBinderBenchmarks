@@ -105,7 +105,7 @@ namespace ConfigurationBinderBenchmarks
             Debug.Assert(source is not null);
             Debug.Assert(addMethod is not null);
 
-            BindDictionary(source, dictionaryType, config, options);
+            BindDictionary_Noop(source, dictionaryType, config, options);
 
             return source;
         }
@@ -197,7 +197,7 @@ namespace ConfigurationBinderBenchmarks
             Debug.Assert(source is not null);
             Debug.Assert(source.GetType().GetMethod("Add", DeclaredOnlyLookup) is not null);
 
-            BindDictionary(source, dictionaryType, config, options);
+            BindDictionary_Noop(source, dictionaryType, config, options);
 
             return source;
         }
@@ -261,7 +261,7 @@ namespace ConfigurationBinderBenchmarks
             Debug.Assert(source is not null);
             Debug.Assert(addMethod is not null);
 
-            BindDictionary(source, dictionaryType, config, options);
+            BindDictionary_Noop(source, dictionaryType, config, options);
 
             return source;
         }
@@ -304,7 +304,7 @@ namespace ConfigurationBinderBenchmarks
             Debug.Assert(source is not null);
             Debug.Assert(source.GetType().GetMethod("Add", DeclaredOnlyLookup) is not null);
 
-            BindDictionary(source, source.GetType(), config, options);
+            BindDictionary_Noop(source, source.GetType(), config, options);
 
             return source;
         }
@@ -375,7 +375,7 @@ namespace ConfigurationBinderBenchmarks
             Debug.Assert(source is not null);
             Debug.Assert(source.GetType().GetMethod("Add", DeclaredOnlyLookup) is not null);
 
-            BindDictionary(source, source.GetType(), config, options);
+            BindDictionary_Noop(source, source.GetType(), config, options);
 
             return source;
         }
@@ -383,7 +383,7 @@ namespace ConfigurationBinderBenchmarks
         [RequiresDynamicCode(DynamicCodeWarningMessage)]
         [RequiresUnreferencedCode("Cannot statically analyze what the element type is of the value objects in the dictionary so its members may be trimmed.")]
         [SuppressMessage("Style", "IDE0060:Remove unused parameter", Justification = "Method is intentionally left empty to keep modifications to the benchmarked code minimal.")]
-        private static void BindDictionary(
+        private static void BindDictionary_Noop(
             object dictionary,
             [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.NonPublicProperties)]
             Type dictionaryType,
