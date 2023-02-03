@@ -6,7 +6,7 @@ using System.Diagnostics;
 
 namespace ConfigurationBinderBenchmarks
 {
-    internal sealed class BindingPoint
+    public sealed class BindingPoint
     {
         private readonly Func<object?>? _initialValueProvider;
         private object? _initialValue;

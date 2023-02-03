@@ -401,7 +401,7 @@ namespace ConfigurationBinderBenchmarks
         // in their config class, then it is cloned to a new dictionary, the same way as other collections.
         [RequiresDynamicCode(DynamicCodeWarningMessage)]
         [RequiresUnreferencedCode("Cannot statically analyze what the element type is of the value objects in the dictionary so its members may be trimmed.")]
-        private static void BindDictionary(
+        public static void BindDictionary(
             object dictionary,
             [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.NonPublicProperties)]
             Type dictionaryType,
@@ -457,11 +457,11 @@ namespace ConfigurationBinderBenchmarks
                         indexerProperty.SetValue(dictionary, valueBindingPoint.Value, new object[] { key });
                     }
                 }
-                catch(Exception ex)
+                catch (Exception ex)
                 {
                     if (options.ErrorOnUnknownConfiguration)
                     {
-                        throw new InvalidOperationException(SR.Format(SR.Error_GeneralErrorWhenBinding,
+                        throw new InvalidOperationException(String.Format("Error_GeneralErrorWhenBinding {0}",
                             nameof(options.ErrorOnUnknownConfiguration)), ex);
                     }
                 }
