@@ -2,7 +2,7 @@
 
 namespace ConfigurationBinderBenchmarks
 {
-    public class BindingImplementations
+    public class BindInterfaceImplementations
     {
         [Params(-1, 0, 1, 2, 3, 5, 10, 100)]
         public int ItemCount;

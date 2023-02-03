@@ -6,7 +6,7 @@ namespace ConfigurationBinderBenchmarks
     {
         public static void Main()
         {
-            BenchmarkRunner.Run<BindingImplementations>();
+            BenchmarkRunner.Run<BindInterfaceImplementations>();
         }
     }
 }
