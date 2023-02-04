@@ -5,7 +5,7 @@ IDictionary<TKey, TValue> in Microsoft.Extensions.Configuration.Binder.
 
 ## Implementations overview
 
-**Default** - the implemention used in ConfigurationBinder as of version 7.0.2.
+**Default** - the implemention used in ConfigurationBinder as of 7d4163fc6e4b5c634eef22d0fd8decfc2aaca763.
 
 **LazyReflection** - avoids making Reflection API if call results are not used.
 
