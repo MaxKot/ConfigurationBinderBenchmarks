@@ -9,13 +9,20 @@ using System.Reflection;
 
 namespace ConfigurationBinderBenchmarks
 {
-    internal abstract class DictionaryInterfaceFactory
+    public abstract class DictionaryBinder
     {
         public abstract object Copy(object? source);
+
+        public abstract void Bind(
+            bool keyTypeIsEnum, bool keyTypeIsInteger,
+            IEnumerator<IConfigurationSection> children,
+            object target,
+            BinderOptions options,
+            bool accessExistingValue);
     }
 
-    internal sealed class DictionaryInterfaceFactory<TKey, TValue>
-        : DictionaryInterfaceFactory
+    public sealed class DictionaryBinder<TKey, TValue>
+        : DictionaryBinder
         where TKey: notnull
     {
         public override object Copy(object? source)
@@ -37,6 +44,53 @@ namespace ConfigurationBinderBenchmarks
                 result.Add(kvp.Key, kvp.Value);
             }
             return result;
+        }
+
+        public override void Bind(
+            bool keyTypeIsEnum, bool keyTypeIsInteger,
+            IEnumerator<IConfigurationSection> children,
+            object target,
+            BinderOptions options,
+            bool accessExistingValue)
+        {
+            var keyType = typeof(TKey);
+            var valueType = typeof(TValue);
+            Dictionary<TKey, TValue> dictionary = (Dictionary<TKey, TValue>)target;
+
+            do
+            {
+                IConfigurationSection child = children.Current;
+                try
+                {
+                    TKey key = (TKey) (
+                        keyTypeIsEnum ? Enum.Parse(keyType, child.Key, true) :
+                        keyTypeIsInteger ? Convert.ChangeType(child.Key, keyType) :
+                        (object) child.Key);
+
+                    var valueBindingPoint = new BindingPoint(
+                        initialValueProvider: () => dictionary.TryGetValue(key, out var value) ? value : null,
+                        isReadOnly: false);
+                    ConfigurationBinder.BindInstance(
+                        type: valueType,
+                        bindingPoint: valueBindingPoint,
+                        config: child,
+                        options: options,
+                        accessExistingValue: accessExistingValue);
+                    if (valueBindingPoint.HasNewValue)
+                    {
+                        dictionary[key] = (TValue) valueBindingPoint.Value!;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    if (options.ErrorOnUnknownConfiguration)
+                    {
+                        throw new InvalidOperationException(String.Format("Error_GeneralErrorWhenBinding {0}",
+                            nameof(options.ErrorOnUnknownConfiguration)), ex);
+                    }
+                }
+            }
+            while (children.MoveNext());
         }
     }
 
@@ -367,8 +421,8 @@ namespace ConfigurationBinderBenchmarks
             // addMethod can only be null if dictionaryType is IReadOnlyDictionary<TKey, TValue> rather than IDictionary<TKey, TValue>.
             if (source == null || dictionaryType.GetMethod("Add", DeclaredOnlyLookup) == null)
             {
-                Type factoryType = typeof(DictionaryInterfaceFactory<,>).MakeGenericType(keyType, valueType);
-                DictionaryInterfaceFactory factory = (DictionaryInterfaceFactory)Activator.CreateInstance(factoryType)!;
+                Type factoryType = typeof(DictionaryBinder<,>).MakeGenericType(keyType, valueType);
+                DictionaryBinder factory = (DictionaryBinder)Activator.CreateInstance(factoryType)!;
 
                 source = factory.Copy(source);
             }
@@ -470,9 +524,248 @@ namespace ConfigurationBinderBenchmarks
             }
         }
 
+        // Binds and potentially overwrites a dictionary object.
+        // This differs from BindDictionaryInterface because this method doesn't clone
+        // the dictionary; it sets and/or overwrites values directly.
+        // When a user specifies a concrete dictionary or a concrete class implementing IDictionary<,>
+        // in their config class, then that value is used as-is. When a user specifies an interface (instantiated)
+        // in their config class, then it is cloned to a new dictionary, the same way as other collections.
+        [RequiresDynamicCode(DynamicCodeWarningMessage)]
+        [RequiresUnreferencedCode("Cannot statically analyze what the element type is of the value objects in the dictionary so its members may be trimmed.")]
+        public static void BindDictionary_LazyReflection(
+            object dictionary,
+            [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.NonPublicProperties)]
+            Type dictionaryType,
+            IConfiguration config, BinderOptions options,
+            bool accessExistingValue)
+        {
+            Debug.Assert(dictionaryType.IsGenericType &&
+                         (dictionaryType.GetGenericTypeDefinition() == typeof(IDictionary<,>) || dictionaryType.GetGenericTypeDefinition() == typeof(Dictionary<,>)));
+
+            Type keyType = dictionaryType.GenericTypeArguments[0];
+            Type valueType = dictionaryType.GenericTypeArguments[1];
+            bool keyTypeIsEnum = keyType.IsEnum;
+            bool keyTypeIsInteger =
+                keyType == typeof(sbyte) ||
+                keyType == typeof(byte) ||
+                keyType == typeof(short) ||
+                keyType == typeof(ushort) ||
+                keyType == typeof(int) ||
+                keyType == typeof(uint) ||
+                keyType == typeof(long) ||
+                keyType == typeof(ulong);
+
+            if (keyType != typeof(string) && !keyTypeIsEnum && !keyTypeIsInteger)
+            {
+                // We only support string, enum and integer (except nint-IntPtr and nuint-UIntPtr) keys
+                return;
+            }
+
+            using var children = config.GetChildren().GetEnumerator();
+
+            if (children.MoveNext())
+            {
+                MethodInfo tryGetValue = dictionaryType.GetMethod("TryGetValue", DeclaredOnlyLookup)!;
+                PropertyInfo indexerProperty = dictionaryType.GetProperty("Item", DeclaredOnlyLookup)!;
+
+                do
+                {
+                    IConfigurationSection child = children.Current;
+                    try
+                    {
+                        object key = keyTypeIsEnum ? Enum.Parse(keyType, child.Key, true) :
+                            keyTypeIsInteger ? Convert.ChangeType(child.Key, keyType) :
+                            child.Key;
+
+                        var valueBindingPoint = new BindingPoint(
+                            initialValueProvider: () =>
+                            {
+                                object?[] tryGetValueArgs = { key, null };
+                                return (bool)tryGetValue.Invoke(dictionary, tryGetValueArgs)! ? tryGetValueArgs[1] : null;
+                            },
+                            isReadOnly: false);
+                        BindInstance(
+                            type: valueType,
+                            bindingPoint: valueBindingPoint,
+                            config: child,
+                            options: options,
+                            accessExistingValue: accessExistingValue);
+                        if (valueBindingPoint.HasNewValue)
+                        {
+                            indexerProperty.SetValue(dictionary, valueBindingPoint.Value, new object[] { key });
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        if (options.ErrorOnUnknownConfiguration)
+                        {
+                            throw new InvalidOperationException(String.Format("Error_GeneralErrorWhenBinding {0}",
+                                nameof(options.ErrorOnUnknownConfiguration)), ex);
+                        }
+                    }
+                }
+                while (children.MoveNext());
+            }
+        }
+
+        // Binds and potentially overwrites a dictionary object.
+        // This differs from BindDictionaryInterface because this method doesn't clone
+        // the dictionary; it sets and/or overwrites values directly.
+        // When a user specifies a concrete dictionary or a concrete class implementing IDictionary<,>
+        // in their config class, then that value is used as-is. When a user specifies an interface (instantiated)
+        // in their config class, then it is cloned to a new dictionary, the same way as other collections.
+        [RequiresDynamicCode(DynamicCodeWarningMessage)]
+        [RequiresUnreferencedCode("Cannot statically analyze what the element type is of the value objects in the dictionary so its members may be trimmed.")]
+        public static void BindDictionary_Helper(
+            object dictionary,
+            [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.NonPublicProperties)]
+            Type dictionaryType,
+            IConfiguration config, BinderOptions options,
+            bool accessExistingValue,
+            DictionaryBinder? helper = null)
+        {
+            Debug.Assert(dictionaryType.IsGenericType &&
+                         (dictionaryType.GetGenericTypeDefinition() == typeof(IDictionary<,>) || dictionaryType.GetGenericTypeDefinition() == typeof(Dictionary<,>)));
+
+            Type keyType = dictionaryType.GenericTypeArguments[0];
+            Type valueType = dictionaryType.GenericTypeArguments[1];
+            bool keyTypeIsEnum = keyType.IsEnum;
+            bool keyTypeIsInteger =
+                keyType == typeof(sbyte) ||
+                keyType == typeof(byte) ||
+                keyType == typeof(short) ||
+                keyType == typeof(ushort) ||
+                keyType == typeof(int) ||
+                keyType == typeof(uint) ||
+                keyType == typeof(long) ||
+                keyType == typeof(ulong);
+
+            if (keyType != typeof(string) && !keyTypeIsEnum && !keyTypeIsInteger)
+            {
+                // We only support string, enum and integer (except nint-IntPtr and nuint-UIntPtr) keys
+                return;
+            }
+
+            using var children = config.GetChildren().GetEnumerator();
+
+            if (children.MoveNext())
+            {
+                if(helper == null)
+                {
+                    Type helperType = typeof (DictionaryBinder<,>).MakeGenericType(keyType, valueType);
+                    helper = (DictionaryBinder)Activator.CreateInstance(helperType)!;
+                }
+
+                helper.Bind(
+                    keyTypeIsEnum, keyTypeIsInteger, children, dictionary, options,
+                    accessExistingValue);
+            }
+        }
+
+        // Binds and potentially overwrites a dictionary object.
+        // This differs from BindDictionaryInterface because this method doesn't clone
+        // the dictionary; it sets and/or overwrites values directly.
+        // When a user specifies a concrete dictionary or a concrete class implementing IDictionary<,>
+        // in their config class, then that value is used as-is. When a user specifies an interface (instantiated)
+        // in their config class, then it is cloned to a new dictionary, the same way as other collections.
+        [RequiresDynamicCode(DynamicCodeWarningMessage)]
+        [RequiresUnreferencedCode("Cannot statically analyze what the element type is of the value objects in the dictionary so its members may be trimmed.")]
+        public static void BindDictionary_NonGeneric(
+            object dictionary,
+            [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.NonPublicProperties)]
+            Type dictionaryType,
+            IConfiguration config, BinderOptions options,
+            bool accessExistingValue)
+        {
+            Debug.Assert(dictionaryType.IsGenericType &&
+                         (dictionaryType.GetGenericTypeDefinition() == typeof(IDictionary<,>) || dictionaryType.GetGenericTypeDefinition() == typeof(Dictionary<,>)));
+
+            Type keyType = dictionaryType.GenericTypeArguments[0];
+            Type valueType = dictionaryType.GenericTypeArguments[1];
+            bool keyTypeIsEnum = keyType.IsEnum;
+            bool keyTypeIsInteger =
+                keyType == typeof(sbyte) ||
+                keyType == typeof(byte) ||
+                keyType == typeof(short) ||
+                keyType == typeof(ushort) ||
+                keyType == typeof(int) ||
+                keyType == typeof(uint) ||
+                keyType == typeof(long) ||
+                keyType == typeof(ulong);
+
+            if (keyType != typeof(string) && !keyTypeIsEnum && !keyTypeIsInteger)
+            {
+                // We only support string, enum and integer (except nint-IntPtr and nuint-UIntPtr) keys
+                return;
+            }
+
+            Func<object, object?> getValue;
+            Action<object, object> setValue;
+            if (dictionary is IDictionary d)
+            {
+                getValue = k =>
+                {
+                    try
+                    {
+                        return d[k];
+                    }
+                    // A fail-safe for incorrect IDictionary implementations.
+                    catch (KeyNotFoundException)
+                    {
+                        return null;
+                    }
+                };
+                setValue = (k, v) => d[k] = v;
+            }
+            else
+            {
+                MethodInfo tryGetValue = dictionaryType.GetMethod("TryGetValue", DeclaredOnlyLookup)!;
+                PropertyInfo indexerProperty = dictionaryType.GetProperty("Item", DeclaredOnlyLookup)!;
+
+                getValue = k =>
+                {
+                    object?[] tryGetValueArgs = { k, null };
+                    return (bool)tryGetValue.Invoke(dictionary, tryGetValueArgs)! ? tryGetValueArgs[1] : null;
+                };
+                setValue = (k, v) => indexerProperty.SetValue(dictionary, v, new object[] { k });
+            }
+
+            foreach (IConfigurationSection child in config.GetChildren())
+            {
+                try
+                {
+                    object key = keyTypeIsEnum ? Enum.Parse(keyType, child.Key, true) :
+                        keyTypeIsInteger ? Convert.ChangeType(child.Key, keyType) :
+                        child.Key;
+
+                    var valueBindingPoint = new BindingPoint(
+                        initialValueProvider: () => getValue(key),
+                        isReadOnly: false);
+                    BindInstance(
+                        type: valueType,
+                        bindingPoint: valueBindingPoint,
+                        config: child,
+                        options: options,
+                        accessExistingValue: accessExistingValue);
+                    if (valueBindingPoint.HasNewValue)
+                    {
+                        setValue(key, valueBindingPoint.Value!);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    if (options.ErrorOnUnknownConfiguration)
+                    {
+                        throw new InvalidOperationException(String.Format("Error_GeneralErrorWhenBinding {0}",
+                            nameof(options.ErrorOnUnknownConfiguration)), ex);
+                    }
+                }
+            }
+        }
+
         [RequiresDynamicCode(DynamicCodeWarningMessage)]
         [RequiresUnreferencedCode(TrimmingWarningMessage)]
-        private static void BindInstance(
+        public static void BindInstance(
             [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] Type type,
             BindingPoint bindingPoint,
             IConfiguration config,

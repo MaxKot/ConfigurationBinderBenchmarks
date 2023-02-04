@@ -23,6 +23,8 @@ namespace ConfigurationBinderBenchmarks
 
         private IConfiguration _configuration = null!;
 
+        private DictionaryBinder _binder = null!;
+
         [GlobalSetup]
         public void GlobalSetup()
         {
@@ -51,6 +53,8 @@ namespace ConfigurationBinderBenchmarks
             var configuration = new ConfigurationManager();
             configuration.AddInMemoryCollection(addedItems);
             _configuration = configuration;
+
+            _binder = new DictionaryBinder<string, int>();
         }
 
         [Benchmark(Baseline = true)]
@@ -62,6 +66,70 @@ namespace ConfigurationBinderBenchmarks
                 var source = _sources[i];
                 ConfigurationBinder.BindDictionary(
                     source, typeof (Dictionary<string, int>), _configuration, _options,
+                    AccessExistingValue);
+                result[i] = source;
+            }
+
+            return result;
+        }
+
+        [Benchmark]
+        public object? LazyReflection()
+        {
+            var result = new object?[Iterations];
+            for (var i = 0; i < Iterations; ++i)
+            {
+                var source = _sources[i];
+                ConfigurationBinder.BindDictionary_LazyReflection(
+                    source, typeof(Dictionary<string, int>), _configuration, _options,
+                    AccessExistingValue);
+                result[i] = source;
+            }
+
+            return result;
+        }
+
+        [Benchmark]
+        public object? NewBinder()
+        {
+            var result = new object?[Iterations];
+            for (var i = 0; i < Iterations; ++i)
+            {
+                var source = _sources[i];
+                ConfigurationBinder.BindDictionary_Helper(
+                    source, typeof(Dictionary<string, int>), _configuration, _options,
+                    AccessExistingValue);
+                result[i] = source;
+            }
+
+            return result;
+        }
+
+        [Benchmark]
+        public object? ExistingBinder()
+        {
+            var result = new object?[Iterations];
+            for (var i = 0; i < Iterations; ++i)
+            {
+                var source = _sources[i];
+                ConfigurationBinder.BindDictionary_Helper(
+                    source, typeof(Dictionary<string, int>), _configuration, _options,
+                    AccessExistingValue, _binder);
+                result[i] = source;
+            }
+
+            return result;
+        }
+
+        [Benchmark]
+        public object? NonGeneric()
+        {
+            var result = new object?[Iterations];
+            for (var i = 0; i < Iterations; ++i)
+            {
+                var source = _sources[i];
+                ConfigurationBinder.BindDictionary_NonGeneric(
+                    source, typeof(Dictionary<string, int>), _configuration, _options,
                     AccessExistingValue);
                 result[i] = source;
             }
