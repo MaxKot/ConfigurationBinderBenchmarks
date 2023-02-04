@@ -6,7 +6,7 @@ namespace ConfigurationBinderBenchmarks
 {
     public class BindObjectImplementations
     {
-        [Params(0)]
+        [Params(0, 100)]
         public int Initial;
 
         [Params(0, 1, 2, 3, 5, 10, 100)]
